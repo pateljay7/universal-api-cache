@@ -1,6 +1,6 @@
 {
   "name": "universal-api-cache",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Framework-agnostic caching middleware for Node.js with multi-tier caching (L1 in-memory, L2 Redis). Works with Express, NestJS, Koa, and Fastify.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

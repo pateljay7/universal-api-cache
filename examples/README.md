@@ -1,6 +1,6 @@
 # Examples
 
-This directory contains usage examples for different frameworks.
+This directory contains usage examples for different frameworks and use cases.
 
 ## Express Example
 
@@ -33,6 +33,39 @@ app.post('/search', (req, res) => {
 app.listen(3000, () => {
   console.log('Server running on port 3000');
 });
+```
+
+## GraphQL Example
+
+See `graphql-example.js` for a complete GraphQL server setup with caching.
+
+Key features for GraphQL:
+- **Query Caching**: Automatically caches GraphQL queries based on operation name, variables, and user
+- **Mutation Invalidation**: Mutations automatically invalidate related cached queries
+- **Custom Cache Keys**: Generate cache keys based on GraphQL operation semantics
+- **Operation-specific TTL**: Different cache durations for different operations
+- **Introspection Caching**: Option to cache introspection queries
+
+```javascript
+const cache = apiCache({
+  // GraphQL-specific options
+  cacheIntrospection: true,
+  graphQLKeyGenerator: (req) => {
+    const { query, variables, operationName } = req.body;
+    const userId = req.user?.id || 'anonymous';
+    const opName = operationName || extractOperationName(query);
+    return `graphql:${opName}:${JSON.stringify(variables)}:${userId}`;
+  },
+  getInvalidationPatterns: (req) => {
+    // Return patterns to invalidate when mutations occur
+    if (req.body.query.includes('createUser')) {
+      return ['graphql:users:*', 'graphql:user:*'];
+    }
+    return [];
+  }
+});
+
+app.use('/graphql', cache);
 ```
 
 ## NestJS Example

@@ -129,6 +129,63 @@ interface ApiCacheOptions {
 
 ## Advanced Usage
 
+### GraphQL Support
+
+The middleware provides special support for GraphQL servers where all requests go through POST endpoints but need intelligent caching based on query vs mutation operations:
+
+```typescript
+import { apiCache } from 'universal-api-cache';
+
+const cache = apiCache({
+  ttl: 300,
+  useMemory: true,
+  
+  // GraphQL-specific options
+  cacheIntrospection: true, // Cache introspection queries
+  
+  // Custom cache key generation for GraphQL operations
+  graphQLKeyGenerator: (req) => {
+    const { query, variables, operationName } = req.body;
+    const userId = req.user?.id || 'anonymous';
+    const opName = operationName || extractOperationName(query);
+    return `graphql:${opName}:${JSON.stringify(variables)}:${userId}`;
+  },
+  
+  // Define cache invalidation patterns for mutations
+  getInvalidationPatterns: (req) => {
+    if (!req.body?.query) return [];
+    
+    const query = req.body.query;
+    if (query.includes('createUser') || query.includes('updateUser')) {
+      return ['graphql:users:*', 'graphql:user:*'];
+    }
+    if (query.includes('createPost')) {
+      return ['graphql:posts:*'];
+    }
+    return [];
+  },
+  
+  // Per-operation TTL
+  getPerRouteTtl: (req) => {
+    const query = req.body?.query || '';
+    if (query.includes('user')) return 600; // 10 minutes for user queries
+    if (query.includes('post')) return 180; // 3 minutes for posts
+    return undefined; // Use default TTL
+  }
+});
+
+// Apply to GraphQL endpoint
+app.use('/graphql', cache);
+```
+
+**GraphQL Features:**
+- ✅ **Query Caching**: Automatically caches GraphQL queries based on operation, variables, and user
+- ✅ **Mutation Handling**: Mutations trigger cache invalidation but are not cached themselves
+- ✅ **Introspection Support**: Optional caching of schema introspection queries
+- ✅ **Operation-specific TTL**: Different cache durations for different operations
+- ✅ **User-specific Caching**: Per-user cache isolation
+- ✅ **Smart Invalidation**: Mutations can invalidate related query caches
+
 ### Conditional POST Caching
 
 ```typescript
