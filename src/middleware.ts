@@ -5,6 +5,7 @@ import { createLogger } from './utils/logger';
 import { getPayloadSize } from './utils/hash';
 import { MemoryStore, type CacheValue } from './store/memoryStore';
 import { RedisStore } from './store/redisStore';
+import { PatternInvalidationEngine } from './utils/invalidation';
 
 export type CacheStore = {
   get<T>(key: string): Promise<CacheValue<T> | undefined>;
@@ -28,6 +29,11 @@ export function apiCache(userOptions: ApiCacheOptions = {}) {
   if (memory) stores.push(memory);
   if (redis) stores.push(redis);
   if (redis) void redis.connect();
+
+  // Initialize pattern invalidation engine if configured
+  const invalidationEngine = options.invalidation 
+    ? new PatternInvalidationEngine(options.invalidation, logger)
+    : undefined;
 
   let hits = 0;
   let misses = 0;
@@ -85,6 +91,17 @@ export function apiCache(userOptions: ApiCacheOptions = {}) {
     // Handle traditional REST write operations
     if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return;
 
+    // Use pattern-based invalidation if configured
+    if (invalidationEngine && options.invalidation) {
+      try {
+        await invalidationEngine.invalidate(req, stores, options.invalidation, options.getUserId!);
+        return;
+      } catch (error) {
+        logger.warn && logger.warn('[pattern invalidation failed, falling back to legacy]', error);
+      }
+    }
+
+    // Legacy invalidation fallback
     // Invalidate exact matching cache key
     const key = buildCacheKey(req, { 
       getUserId: options.getUserId!
