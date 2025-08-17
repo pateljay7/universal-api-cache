@@ -11,12 +11,15 @@ export function sha256(input: string | Buffer | object): string {
 }
 
 export function getPayloadSize(payload: any): number {
+  if (payload == null) return 0;
+  if (typeof payload === 'string') return Buffer.byteLength(payload, 'utf8');
+  if (Buffer.isBuffer(payload)) return payload.length;
+  
   try {
-    if (payload == null) return 0;
-    if (typeof payload === 'string') return Buffer.byteLength(payload);
-    return Buffer.byteLength(JSON.stringify(payload));
-  } catch {
-    return Number.MAX_SAFE_INTEGER; // avoid caching if size can't be computed
+    const str = JSON.stringify(payload);
+    return Buffer.byteLength(str, 'utf8');
+  } catch (e) {
+    return 0;
   }
 }
 

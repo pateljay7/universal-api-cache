@@ -24,22 +24,17 @@ export interface ApiCacheOptions {
   cachePostPredicate?: (req: any) => boolean;
   // Provide extra invalidation patterns to run for write operations
   getInvalidationPatterns?: (req: any) => string[] | undefined;
-  
-  // GraphQL-specific options
-  cacheIntrospection?: boolean; // whether to cache introspection queries
-  skipGraphQLCachePredicate?: (req: any) => boolean; // custom GraphQL cache bypass logic
-  graphQLKeyGenerator?: (req: any) => string | undefined; // custom cache key for GraphQL operations
 }
 
 export const defaultConfig: Required<
   Omit<
     ApiCacheOptions,
-    'skipCachePredicate' | 'logger' | 'getUserId' | 'getPerRouteTtl' | 'cachePostPredicate' | 'getInvalidationPatterns' | 'skipGraphQLCachePredicate' | 'graphQLKeyGenerator'
+    'skipCachePredicate' | 'logger' | 'getUserId' | 'getPerRouteTtl' | 'cachePostPredicate' | 'getInvalidationPatterns'
   >
 > &
   Pick<
     ApiCacheOptions,
-    'skipCachePredicate' | 'logger' | 'getUserId' | 'getPerRouteTtl' | 'cachePostPredicate' | 'getInvalidationPatterns' | 'skipGraphQLCachePredicate' | 'graphQLKeyGenerator'
+    'skipCachePredicate' | 'logger' | 'getUserId' | 'getPerRouteTtl' | 'cachePostPredicate' | 'getInvalidationPatterns'
   > = {
   ttl: 60,
   methods: ['GET', 'POST'],
@@ -52,12 +47,9 @@ export const defaultConfig: Required<
   maxPayloadSize: 1024 * 1024, // 1MB
   skipCachePredicate: () => false,
   disableAuthCaching: false,
-  cacheIntrospection: false, // don't cache introspection by default
   logger: console,
   getUserId: (req: any) => req?.user?.id,
   getPerRouteTtl: () => undefined,
   cachePostPredicate: () => false,
   getInvalidationPatterns: () => undefined,
-  skipGraphQLCachePredicate: () => false,
-  graphQLKeyGenerator: undefined,
 };

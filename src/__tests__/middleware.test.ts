@@ -30,30 +30,28 @@ describe('apiCache middleware', () => {
     expect(r2.body.count).toBe(1);
   });
 
-  test('stale-while-revalidate serves stale and refreshes', async () => {
+  test('stale-while-revalidate serves stale data', async () => {
     const app = express();
     app.use(express.json());
 
     let count = 0;
-    const cache = apiCache({ ttl: 0, staleWhileRevalidate: true, useMemory: true, useRedis: false });
-    app.use(cache);
+    app.use(apiCache({ ttl: 0, staleWhileRevalidate: true, useMemory: true, useRedis: false }));
 
     app.get('/data', (req, res) => {
       count++;
       res.json({ count });
     });
 
-    // Prime cache
+    // First request - cache miss, should get count=1
     const r1 = await request(app).get('/data');
     expect(r1.body.count).toBe(1);
     
-    // Request again - should serve stale (count=1) since ttl=0 makes it immediately stale
+    // Second request - cache is immediately stale (ttl=0), should serve stale data (count=1)
     const r2 = await request(app).get('/data');
-    expect(r2.body.count).toBe(1); // stale served
-    expect(r2.headers['x-cache']).toBe('HIT');
-
-    // For now, this test verifies basic stale-while-revalidate behavior
-    // The background refresh happens asynchronously
+    expect(r2.body.count).toBe(1); // stale served, count should still be 1
+    
+    // Verify the stale data was served (handler wasn't called again immediately)
+    expect(count).toBe(1); // Should still be 1, not 2
   });
 
   test('invalidates on POST when enabled', async () => {
@@ -61,9 +59,7 @@ describe('apiCache middleware', () => {
     app.use(express.json());
 
     let list = [1];
-    app.use(
-      apiCache({ ttl: 30, invalidateOnWrite: true, useMemory: true, useRedis: false }),
-    );
+    app.use(apiCache({ ttl: 30, invalidateOnWrite: true, useMemory: true, useRedis: false }));
 
     app.get('/list', (req, res) => {
       res.json({ list });
@@ -104,12 +100,7 @@ describe('apiCache middleware', () => {
 
     const r1 = await request(app).post('/search').send({ q: 'a' });
     const r2 = await request(app).post('/search').send({ q: 'a' });
-    
-    // First call executes the handler
     expect(r1.body.calls).toBe(1);
-    // Second call should be cached, but the current implementation may have issues
-    // For now, let's test that both calls succeed
-    expect(r2.body.q).toBe('a');
-    expect(typeof r2.body.calls).toBe('number');
+    expect(r2.body.calls).toBe(1);
   });
 });

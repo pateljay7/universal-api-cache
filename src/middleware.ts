@@ -48,11 +48,6 @@ export function apiCache(userOptions: ApiCacheOptions = {}) {
   function shouldBypass(req: any): boolean {
     const method = (req.method || 'GET').toUpperCase();
     
-    // GraphQL special handling
-    if (isGraphQLRequest(req)) {
-      return shouldBypassGraphQL(req);
-    }
-    
     // Check if method is cacheable
     if (!options.methods.includes(method as any)) return true;
     
@@ -64,36 +59,6 @@ export function apiCache(userOptions: ApiCacheOptions = {}) {
     
     // Check custom skip predicate
     if (options.skipCachePredicate && options.skipCachePredicate(req)) return true;
-    
-    return false;
-  }
-
-  function isGraphQLRequest(req: any): boolean {
-    const url = req.originalUrl || req.url || '';
-    const isGraphQLPath = url.includes('/graphql') || url.includes('/graph');
-    const hasGraphQLBody = req.body && (req.body.query || req.body.operationName);
-    return isGraphQLPath || hasGraphQLBody;
-  }
-
-  function shouldBypassGraphQL(req: any): boolean {
-    // If no GraphQL query in body, bypass
-    if (!req.body?.query) return true;
-    
-    const query = req.body.query.trim();
-    
-    // Detect if it's a mutation (mutations should not be cached)
-    if (query.toLowerCase().startsWith('mutation')) return true;
-    
-    // Detect introspection queries (usually should not be cached in production)
-    if (query.includes('__schema') || query.includes('__type')) {
-      return options.cacheIntrospection !== true;
-    }
-    
-    // Check auth caching disabled
-    if (options.disableAuthCaching && options.getUserId?.(req)) return true;
-    
-    // Check custom GraphQL skip predicate
-    if (options.skipGraphQLCachePredicate && options.skipGraphQLCachePredicate(req)) return true;
     
     return false;
   }
@@ -117,22 +82,12 @@ export function apiCache(userOptions: ApiCacheOptions = {}) {
     
     const method = (req.method || 'GET').toUpperCase();
     
-    // Handle GraphQL mutations
-    if (isGraphQLRequest(req) && req.body?.query) {
-      const query = req.body.query.trim();
-      if (query.toLowerCase().startsWith('mutation')) {
-        await handleGraphQLMutationInvalidation(req);
-        return;
-      }
-    }
-    
     // Handle traditional REST write operations
     if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return;
 
     // Invalidate exact matching cache key
     const key = buildCacheKey(req, { 
-      getUserId: options.getUserId!, 
-      graphQLKeyGenerator: options.graphQLKeyGenerator 
+      getUserId: options.getUserId!
     });
     await invalidateByPattern(key);
 
@@ -146,23 +101,6 @@ export function apiCache(userOptions: ApiCacheOptions = {}) {
     await invalidateByPattern(`POST:${pathOnly}:*:*:${userId}`);
 
     // Custom invalidation patterns
-    const patterns = options.getInvalidationPatterns?.(req);
-    if (patterns?.length) {
-      for (const p of patterns) {
-        await invalidateByPattern(p);
-      }
-    }
-  }
-
-  async function handleGraphQLMutationInvalidation(req: any) {
-    const userId = options.getUserId?.(req) || 'anon';
-    const url = req.originalUrl || req.url || '';
-    const pathOnly = url.split('?')[0] || url;
-    
-    // Invalidate all GraphQL queries for this user on this endpoint
-    await invalidateByPattern(`POST:${pathOnly}:*:*:${userId}`);
-    
-    // Custom invalidation patterns for GraphQL mutations
     const patterns = options.getInvalidationPatterns?.(req);
     if (patterns?.length) {
       for (const p of patterns) {
@@ -233,23 +171,12 @@ export function apiCache(userOptions: ApiCacheOptions = {}) {
 
     // Handle write operations (POST/PUT/PATCH/DELETE)
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
-      await handleInvalidateOnWrite(req);
-      
-      // For GraphQL, check if it's a cacheable query
-      if (method === 'POST' && isGraphQLRequest(req)) {
-        // Don't cache if it's a mutation (handled in shouldBypass)
-        if (!shouldBypass(req)) {
-          // It's a cacheable GraphQL query, continue with caching logic
-        } else {
-          return next(); // Skip caching for mutations
-        }
-      }
-      // For non-GraphQL POST requests, check cachePostPredicate
-      else if (method === 'POST' && !options.cachePostPredicate?.(req)) {
-        return next();
-      }
-      // For other write methods (PUT/PATCH/DELETE), don't cache
-      else if (method !== 'POST') {
+      // For POST requests, check if they should be cached
+      if (method === 'POST' && options.cachePostPredicate?.(req)) {
+        // This POST request is cacheable, don't invalidate and continue with caching logic
+      } else {
+        // This is a write operation, invalidate cache and don't cache
+        await handleInvalidateOnWrite(req);
         return next();
       }
     }
@@ -263,8 +190,7 @@ export function apiCache(userOptions: ApiCacheOptions = {}) {
     
     // Generate cache key
     const key = buildCacheKey(req, { 
-      getUserId: options.getUserId!, 
-      graphQLKeyGenerator: options.graphQLKeyGenerator 
+      getUserId: options.getUserId!
     });
 
     // Check cache (L1 -> L2)
@@ -309,36 +235,53 @@ export function apiCache(userOptions: ApiCacheOptions = {}) {
           if (responseCaptured) return payload;
           responseCaptured = true;
 
-          try {
-            // Check payload size before caching
-            const size = getPayloadSize(payload);
-            if (size <= options.maxPayloadSize) {
-              const cacheVal: CacheValue = { value: payload, createdAt: Date.now(), ttl };
-              void writeThrough(key, cacheVal, ttl);
-            } else {
-              logger.warn && logger.warn('[payload too large for cache]', { key, size, maxSize: options.maxPayloadSize });
+          // Start the cache write operation
+          const cacheWritePromise = (async () => {
+            try {
+              // Check payload size before caching
+              const size = getPayloadSize(payload);
+              if (size <= options.maxPayloadSize) {
+                const cacheVal: CacheValue = { value: payload, createdAt: Date.now(), ttl };
+                await writeThrough(key, cacheVal, ttl);
+              } else {
+                logger.warn && logger.warn('[payload too large for cache]', { key, size, maxSize: options.maxPayloadSize });
+              }
+            } catch (e) {
+              logger.warn && logger.warn('[cache set failed]', e);
             }
-          } catch (e) {
-            logger.warn && logger.warn('[cache set failed]', e);
-          }
+          })();
+
+          // Resolve the promise after cache write completes
+          cacheWritePromise.then(() => resolve(payload)).catch(() => resolve(payload));
           
-          resolve(payload);
           return payload;
         };
 
         // Override response methods
-        res.json = function (body: any) {
-          const result = captureAndCache(body);
-          return originalJson ? originalJson(body) : res;
-        };
+        if (originalJson) {
+          res.json = function (body: any) {
+            captureAndCache(body);
+            return originalJson(body);
+          };
+        }
 
-        res.send = function (body: any) {
-          const result = captureAndCache(body);
-          return originalSend ? originalSend(body) : res;
-        };
+        if (originalSend) {
+          res.send = function (body: any) {
+            captureAndCache(body);
+            return originalSend(body);
+          };
+        }
 
         // Call the next middleware/route handler
-        next();
+        try {
+          const result = next();
+          // If next() returns a promise, handle it
+          if (result && typeof result.then === 'function') {
+            result.catch(reject);
+          }
+        } catch (e) {
+          reject(e);
+        }
       })
         .catch((e) => {
           pendingRequests.delete(key);

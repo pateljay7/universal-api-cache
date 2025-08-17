@@ -1,14 +1,11 @@
 {
   "name": "universal-api-cache",
-  "version": "1.1.0",
-  "description": "Framework-agnostic caching middleware for Node.js with multi-tier caching (L1 in-memory, L2 Redis). Works with Express, NestJS, Koa, and Fastify.",
+  "version": "1.1.1",
+  "description": "Framework-agnostic caching middleware for Node.js with in-memory (L1) and Redis (L2)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist",
-    "README.md",
-    "LICENSE",
-    "examples"
+    "dist"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -16,39 +13,20 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "jest",
-    "test:watch": "jest --watch",
-    "prepare": "npm run build",
-    "prepublishOnly": "npm run test && npm run build"
+    "prepare": "npm run build"
   },
   "keywords": [
     "cache",
-    "caching",
     "middleware",
     "express",
-    "nestjs", 
-    "koa",
-    "fastify",
     "redis",
-    "memory-cache",
-    "l1-cache",
-    "l2-cache",
-    "api-cache",
-    "http-cache",
-    "node",
-    "typescript",
-    "stale-while-revalidate",
-    "cache-invalidation"
+    "l2",
+    "l1",
+    "api",
+    "node"
   ],
-  "author": "Jay Patel",
+  "author": "",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/jaypatel/universal-api-cache.git"
-  },
-  "bugs": {
-    "url": "https://github.com/jaypatel/universal-api-cache/issues"
-  },
-  "homepage": "https://github.com/jaypatel/universal-api-cache#readme",
   "engines": {
     "node": ">=18"
   },
