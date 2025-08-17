@@ -13,15 +13,27 @@ describe('Pattern Invalidation Integration', () => {
     params: {},
   });
 
-  const createMockResponse = () => ({
-    json: jest.fn().mockImplementation((data) => data),
-    send: jest.fn().mockImplementation((data) => data),
-    set: jest.fn(),
-    setHeader: jest.fn(),
-    status: jest.fn().mockReturnThis(),
-    end: jest.fn(),
-    headersSent: false,
-  });
+  const createMockResponse = () => {
+    const mockRes: any = {
+      json: jest.fn().mockImplementation((data) => {
+        mockRes.headersSent = true;
+        return mockRes;
+      }),
+      send: jest.fn().mockImplementation((data) => {
+        mockRes.headersSent = true;
+        return mockRes;
+      }),
+      set: jest.fn(),
+      setHeader: jest.fn(),
+      status: jest.fn().mockReturnThis(),
+      end: jest.fn().mockImplementation(() => {
+        mockRes.headersSent = true;
+        return mockRes;
+      }),
+      headersSent: false,
+    };
+    return mockRes;
+  };
 
   describe('Integration with existing middleware flow', () => {
     it('should use pattern invalidation when configured', async () => {
@@ -39,23 +51,28 @@ describe('Pattern Invalidation Integration', () => {
       };
 
       middleware = apiCache(options);
-      const mockRes = createMockResponse();
+
+      // Create a promise-based wrapper for middleware calls
+      const callMiddleware = (req: any, res: any) => {
+        return new Promise<void>((resolve) => {
+          const next = () => resolve();
+          middleware(req, res, next);
+        });
+      };
 
       // Cache a collection
       const getReq = createMockRequest('GET', '/api/users');
-      let next = jest.fn();
-
-      await middleware(getReq, mockRes, next);
-      expect(next).toHaveBeenCalledTimes(1);
+      const mockRes1 = createMockResponse();
+      
+      await callMiddleware(getReq, mockRes1);
 
       // Create new user (should trigger pattern invalidation)
       const postReq = createMockRequest('POST', '/api/users', 'user123', { name: 'Jane' });
-      next = jest.fn();
+      const mockRes2 = createMockResponse();
+      
+      await callMiddleware(postReq, mockRes2);
 
-      await middleware(postReq, mockRes, next);
-      expect(next).toHaveBeenCalledTimes(1);
-
-      // Verify middleware is defined
+      // Verify middleware is defined and working
       expect(middleware).toBeDefined();
       expect(middleware.getCacheStats).toBeDefined();
     }, 10000);
@@ -69,12 +86,19 @@ describe('Pattern Invalidation Integration', () => {
       };
 
       middleware = apiCache(options);
-      const mockRes = createMockResponse();
+
+      // Create a promise-based wrapper for middleware calls
+      const callMiddleware = (req: any, res: any) => {
+        return new Promise<void>((resolve) => {
+          const next = () => resolve();
+          middleware(req, res, next);
+        });
+      };
 
       // Cache some data
       const getReq = createMockRequest('GET', '/api/users/1');
-      const next = jest.fn();
-      await middleware(getReq, mockRes, next);
+      const mockRes = createMockResponse();
+      await callMiddleware(getReq, mockRes);
 
       // Clear cache should not throw
       await expect(middleware.clearCache()).resolves.not.toThrow();
