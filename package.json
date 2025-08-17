@@ -25,6 +25,14 @@
     "api",
     "node"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pateljay7/universal-api-cache.git"
+  },
+  "homepage": "https://github.com/pateljay7/universal-api-cache#readme",
+  "bugs": {
+    "url": "https://github.com/pateljay7/universal-api-cache/issues"
+  },
   "author": "",
   "license": "MIT",
   "engines": {
