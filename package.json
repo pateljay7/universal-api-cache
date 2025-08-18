@@ -1,6 +1,6 @@
 {
   "name": "universal-api-cache",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Framework-agnostic caching middleware for Node.js with in-memory (L1) and Redis (L2)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
