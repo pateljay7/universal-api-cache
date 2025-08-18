@@ -43,18 +43,16 @@ app.use(
     skipCachePredicate: (req) => !!req.headers['x-no-cache'],
     cachePostPredicate: (req) => req.path === '/search',
     getUserId: (req) => req.user?.id,
-    // Pattern-based invalidation configuration
-    invalidation: {
-      autoInvalidateRules: {
-        autoGenerateRestRules: true,
-        customPatterns: {
-          'users-profiles': ['GET:/api/users*', 'GET:/api/profiles*'],
-          'posts-comments': ['GET:/api/posts/{postId}*', 'GET:/api/comments*']
-        }
-      },
-      respectUserScope: true,
-      enableInvalidationDebugging: true
-    }
+  // Pattern-based invalidation configuration
+  invalidation: {
+    autoInvalidateRules: {
+      autoGenerateRestRules: true,
+      autoInvalidateParents: true,
+      autoInvalidateCollections: true
+    },
+    respectUserScope: true,
+    enableInvalidationDebugging: true
+  }
   }),
 );
 
@@ -126,11 +124,6 @@ interface InvalidationOptions {
     
     // Auto-invalidate collection when items change
     autoInvalidateCollections?: boolean; // POST /api/users → invalidates GET /api/users* (default: true)
-    
-    // Custom named invalidation patterns
-    customPatterns?: {
-      [ruleName: string]: string[];     // Named groups of patterns to invalidate together
-    };
   };
   
   // Custom invalidation rules (advanced)
@@ -236,27 +229,8 @@ app.use(apiCache({
   invalidation: {
     autoInvalidateRules: {
       autoGenerateRestRules: true,
-      customPatterns: {
-        // Product updates affect categories and search
-        'product-updates': [
-          'GET:/api/products*',
-          'GET:/api/categories*',
-          'GET:/api/search*'
-        ],
-        
-        // Cart changes affect user's cart and recommendations
-        'cart-updates': [
-          'GET:/api/cart/{userId}*',
-          'GET:/api/recommendations/{userId}*'
-        ],
-        
-        // Order placement affects inventory and user data
-        'order-placement': [
-          'GET:/api/products*',        // Inventory changes
-          'GET:/api/users/{userId}*',  // User order history
-          'GET:/api/analytics*'        // Sales analytics
-        ]
-      }
+      autoInvalidateParents: true,
+      autoInvalidateCollections: true
     },
     respectUserScope: true,
     enableInvalidationDebugging: process.env.NODE_ENV === 'development'
@@ -275,28 +249,8 @@ app.use(apiCache({
   invalidation: {
     autoInvalidateRules: {
       autoGenerateRestRules: true,
-      customPatterns: {
-        // Post interactions affect feeds and notifications
-        'post-interactions': [
-          'GET:/api/posts/{postId}*',
-          'GET:/api/feed*',
-          'GET:/api/notifications*'
-        ],
-        
-        // Follow/unfollow affects multiple user relationships
-        'user-relationships': [
-          'GET:/api/users/{userId}/followers*',
-          'GET:/api/users/{userId}/following*',
-          'GET:/api/feed/{userId}*'
-        ],
-        
-        // Comment creation affects post and notification data
-        'comment-activity': [
-          'GET:/api/posts/{postId}*',
-          'GET:/api/comments*',
-          'GET:/api/notifications*'
-        ]
-      }
+      autoInvalidateParents: true,
+      autoInvalidateCollections: true
     },
     respectUserScope: true
   },
@@ -317,21 +271,8 @@ app.use(apiCache({
   invalidation: {
     autoInvalidateRules: {
       autoGenerateRestRules: true,
-      customPatterns: {
-        // Tenant settings affect all tenant data
-        'tenant-settings': [
-          'GET:/api/tenants/{tenantId}*',
-          'GET:/api/dashboard*',
-          'GET:/api/users*'
-        ],
-        
-        // User role changes affect permissions and UI
-        'user-permissions': [
-          'GET:/api/users/{userId}*',
-          'GET:/api/permissions*',
-          'GET:/api/menu*'
-        ]
-      }
+      autoInvalidateParents: true,
+      autoInvalidateCollections: true
     },
     respectUserScope: true,  // Critical for multi-tenancy
     enableInvalidationDebugging: true
@@ -361,41 +302,6 @@ invalidation: {
 // POST /api/users        → invalidates GET:/api/users*
 // PUT /api/users/123     → invalidates GET:/api/users/123*, GET:/api/users*  
 // DELETE /api/posts/456  → invalidates GET:/api/posts/456*, GET:/api/posts*
-```
-
-#### Custom Pattern Groups
-```ts
-invalidation: {
-  autoInvalidateRules: {
-    autoGenerateRestRules: true,
-    customPatterns: {
-      // E-commerce: Product changes affect multiple endpoints
-      'product-updates': [
-        'GET:/api/products*',          // Product listings
-        'GET:/api/categories*',        // Category pages
-        'GET:/api/search*',            // Search results
-        'GET:/api/recommendations*'    // Recommendation engine
-      ],
-      
-      // Social: User interactions affect feeds and notifications  
-      'user-interactions': [
-        'GET:/api/feed*',              // User feeds
-        'GET:/api/notifications*',     // Notifications
-        'GET:/api/users/{userId}*'     // User profiles (with placeholder)
-      ],
-      
-      // Multi-tenant: Tenant settings affect all tenant data
-      'tenant-updates': [
-        'GET:/api/dashboard*',         // Dashboard data
-        'GET:/api/settings*',          // Settings pages
-        'GET:/api/users*',             // User lists
-        'GET:/api/permissions*'        // Permission data
-      ]
-    }
-  },
-  respectUserScope: true,              // Only invalidate current user's cache
-  enableInvalidationDebugging: true    // Log invalidation operations
-}
 ```
 
 #### Advanced Custom Rules
@@ -468,77 +374,4 @@ npm test -- --testNamePattern="Test Case (2|6)"  # Cache Hit & TTL Expiry
 docker stop redis-test && docker rm redis-test
 ```
 
-### Test Cases Covered
 
-| Test Case | Description | Status | Key Features Tested |
-|-----------|-------------|--------|-------------------|
-| **1. Cache Population** | First GET request populates Redis | ✅ **PASSING** | Cache Miss → DB → Redis stored with TTL |
-| **2. Cache Hit** | Subsequent GET serves from Redis | ✅ **PASSING** | Cache Hit → Direct Redis response, no DB query |
-| **3. CREATE Invalidation** | POST invalidates related cache entries | ✅ **PASSING** | Cache invalidated → Fresh DB fetch |
-| **4. UPDATE Invalidation** | PUT invalidates specific user cache | ✅ **PASSING** | Targeted invalidation → Data consistency |
-| **5. DELETE Invalidation** | DELETE removes user and related cache | ✅ **PASSING** | Multi-pattern invalidation → Clean state |
-| **6. TTL Expiry** | Cache expires after TTL duration | ✅ **PASSING** | Automatic expiry → Fresh data retrieval |
-| **7. High Concurrency** | 50 concurrent requests efficiently handled | ✅ **PASSING** | Request coalescing → Optimal cache efficiency |
-| **8. Redis Error Handling** | System gracefully handles Redis unavailability | ✅ **PASSING** | Fault tolerance → Memory fallback |
-| **9. Complete Lifecycle** | End-to-end cache operations | ✅ **PASSING** | Full workflow → Production readiness |
-
-### Recent Test Improvements (Fixed Issues)
-
-#### ✅ **Cache Hit Detection (Test Case 2)**
-- **Issue**: Test was timing out due to improper cache hit detection
-- **Solution**: Implemented proper response interceptors to detect when middleware serves from cache directly
-- **Result**: Reliable cache hit verification with 791ms execution time
-
-#### ✅ **TTL Expiry Robustness (Test Case 6)**  
-- **Issue**: Timing-sensitive test needed better verification
-- **Solution**: Enhanced TTL validation with proper wait times and Redis key state checking
-- **Result**: Consistent expiry behavior verification with 3.3s execution time
-
-#### ✅ **High Concurrency Optimization (Test Case 7)**
-- **Issue**: 100 concurrent requests causing timeouts
-- **Solution**: Reduced to 50 requests with better timeout handling and graceful error recovery
-- **Result**: 98% cache efficiency (1-5 DB queries out of 50 requests)
-
-### Expected Behavior & Debugging
-
-#### **Cache Operations**
-- **Cache Miss**: `[DB] Fetching user X` logged, data stored in Redis with TTL
-- **Cache Hit**: `[cache hit]` debug log, response served directly from Redis, no DB query
-- **Invalidation**: `[PatternInvalidation]` logs show related patterns cleared
-- **TTL Expiry**: Redis TTL reaches -2 (expired), automatic cleanup triggers fresh fetch
-- **Fallback**: Graceful degradation when Redis unavailable, falls back to memory cache
-
-#### **Error Handling**
-- **ECONNREFUSED errors to port 9999**: These are **INTENTIONAL** for testing Redis unavailability
-- **Memory/Redis Coordination**: Some cache hits may show 1 DB query due to L1/L2 cache sync (expected)
-- **Jest Open Handles Warning**: Minor issue due to Redis connections, doesn't affect test results
-
-### Redis Monitoring During Tests
-
-```bash
-# Monitor Redis commands in real-time
-docker exec -it redis-test redis-cli monitor
-
-# Check current cache keys
-docker exec redis-test redis-cli keys "*"
-
-# Check TTL for a specific key
-docker exec redis-test redis-cli ttl "GET:/api/users/1:::user123"
-
-# Verify Redis is working
-docker exec redis-test redis-cli ping
-```
-
-### Test Execution Logs
-
-When tests run successfully, you'll see logs like:
-```
-✅ Connected to Redis for comprehensive tests
-🧹 Redis cleared and mock DB reset
-🎯 === TEST CASE 2: Cache Hit ===
-[cache hit] GET:/api/users/1:::user123
-✓ Cache Hit → No handler called (direct cache response)
-✓ Response served directly from Redis cache
-ℹ️ DB queries: 1 (expected 0-1 due to cache coordination)
-✓ Cache hit functionality verified
-```
